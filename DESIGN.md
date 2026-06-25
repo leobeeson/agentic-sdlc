@@ -67,13 +67,13 @@ The back half (phase 4) is headless. An orchestration skill drives subagents tha
   1. **Explore** (`feature-explorer`) writes `explorations/<task-id>.md`.
   2. **Prepare** (`task-preparer`) writes `task-briefs/<task-id>.md`.
   3. **Implement** (the developer with Claude) writes code and tests.
-  4. **Review panel** (`code-reviewer` spawned once per dimension, in parallel) writes `reviews/<task-id>/<dimension>.md`.
+  4. **Review panel** (one `reviewer-<dimension>` agent per dimension, in parallel) writes `reviews/<task-id>/<dimension>.md`.
   5. **Consolidate** (`review-consolidator`) writes `reviews/<task-id>/consolidated.md`.
   6. **Walkthrough** (`code-walkthrough`) writes `walkthroughs/<task-id>.md`.
   7. **Reconcile** (`spec-reconciler`) updates the spec document directly so it reflects what was actually built, updates `reference/`, and writes `reconciliations/<task-id>.md` as the audit trail of what changed and why.
 - The review panel is added between implement and walkthrough; otherwise this is the standard per-task loop.
 
-There is no separate phase 5. The readiness-auditor's adversarial method is folded into the review panel as the shared reviewer contract, and the CI merge gate is dropped.
+There is no separate phase 5. The adversarial review method is the shared reviewer contract, and the CI merge gate is dropped.
 
 ## The artifact tree
 
@@ -200,7 +200,7 @@ New agents:
 - **requirements-analyst.** Fan-out research and drafting for phase 1 (personas, functional requirements, edge cases).
 - **architecture-advisor.** Trade-off analysis for phase 2.
 - **plan-decomposer.** Decomposes the plan into tasks and writes the spec documents in phase 3.
-- **code-reviewer.** One definition, spawned once per review dimension with the dimension injected from the profile roster. Read-only. Follows the readiness-auditor doctrine: code and deployed configuration are the only source of truth, and no finding is asserted without a trace to the actual file and line. The diff is the trigger and prime suspect, never the search boundary.
+- **reviewers/ (nine agents).** One dedicated agent per review dimension (`reviewer-spec-conformance`, `reviewer-correctness`, and so on), under `.claude/agents/reviewers/`. Each is read-only and fully self-contained: it carries the complete adversarial review doctrine (code and deployed configuration are the only source of truth, the diff is the trigger and prime suspect but never the search boundary, no finding asserted without a trace to the actual file and line, severity ranked by irreversibility times silence times blast radius) plus a deep section for its single dimension. The profile `review.roster` selects which run.
 - **review-consolidator.** Reads every reviewer's findings, deduplicates overlaps, resolves disagreements, re-validates each surviving finding against the actual code to kill false positives, ranks by severity, and writes the consolidated verdict.
 
 The implementation-loop agents:
@@ -212,8 +212,8 @@ The implementation-loop agents:
 
 Folded in, not standalone:
 
-- The **feature-validator** behaviour becomes the spec-conformance dimension of `code-reviewer`.
-- The **readiness-auditor** doctrine becomes the shared `code-reviewer` contract plus dimensions 3 to 6 (state-and-concurrency, security-and-trust-boundary, failure-and-robustness, observability), together with `review-consolidator`.
+- The **feature-validator** behaviour becomes the `reviewer-spec-conformance` agent.
+- The adversarial review doctrine (one dimension per reviewer, code as the only source of truth, no assert without trace) is the shared contract carried by every reviewer agent, with dedicated agents for the state-and-concurrency, security-and-trust-boundary, failure-and-robustness, and observability dimensions, alongside `review-consolidator`.
 
 ## Skills
 
@@ -231,7 +231,7 @@ All skills are defined under `.claude/skills/`.
 
 Code review is a standard stage of `implement-task`, not an optional side call, and is also invocable standalone.
 
-- **The panel.** A roster of reviewers, each a `code-reviewer` subagent spawned with one dimension, run in parallel, read-only, each obeying the no-assert-without-trace contract. The default roster is the nine dimensions in the profile: spec-conformance, correctness, state-and-concurrency, security-and-trust-boundary, failure-and-robustness, observability, test-adequacy, interface-and-data-integrity, conventions. Dimensions 3 to 6 are the readiness-auditor's failure-pattern categories, generalised. Each reviewer writes its own file under `reviews/<task-id>/`, giving full visibility into raw findings.
+- **The panel.** A roster of reviewers, each a dedicated `reviewer-<dimension>` subagent under `.claude/agents/reviewers/`, run in parallel, read-only, each obeying the no-assert-without-trace contract. The default roster is the nine dimensions in the profile: spec-conformance, correctness, state-and-concurrency, security-and-trust-boundary, failure-and-robustness, observability, test-adequacy, interface-and-data-integrity, conventions. Dimensions 3 to 6 map to the failure-pattern categories in the profile. Each reviewer writes its own file under `reviews/<task-id>/`, giving full visibility into raw findings.
 - **The consolidator.** After the panel finishes, `review-consolidator` reads every reviewer's file, deduplicates overlapping findings, resolves disagreements between reviewers, re-validates each surviving finding against the actual code, ranks by severity (irreversibility times silence times blast radius), and writes `reviews/<task-id>/consolidated.md` as the authoritative verdict.
 - **Mode.** A profile flag picks light mode (a subset of reviewers) or thorough mode (the full roster), because running nine reviewers plus a consolidator per task is expensive and not every task warrants it.
 - **Pipeline position.** implement, then review panel, then consolidate, then walkthrough, then reconcile.
@@ -290,7 +290,7 @@ agentic-sdlc/
       plan-decomposer.md
       feature-explorer.md
       task-preparer.md
-      code-reviewer.md
+      reviewers/                  nine reviewer agents, one per dimension
       review-consolidator.md
       code-walkthrough.md
       spec-reconciler.md
@@ -342,7 +342,7 @@ agentic-sdlc/
 ## Build sequence
 
 1. The profile schema (`sdlc.config.schema.yaml`) and the scaffolding CLI (`scaffold.py`).
-2. The generalised back half: `feature-explorer`, `task-preparer`, `code-reviewer`, `review-consolidator`, `code-walkthrough`, `spec-reconciler`, and the `implement-task` orchestration skill. The work here is decoupling plus adding the review panel.
+2. The generalised back half: `feature-explorer`, `task-preparer`, the `reviewers/` panel, `review-consolidator`, `code-walkthrough`, `spec-reconciler`, and the `implement-task` orchestration skill. The work here is decoupling plus adding the review panel.
 3. The phase 3 join: `plan-implementation` and `plan-decomposer`, emitting spec documents and the task registry.
 4. The front half: `initialise-project`, `define-requirements`, `design-architecture`, and their research subagents.
 5. The setup skill, `install.sh`, and the brownfield `profile-discoverer`.

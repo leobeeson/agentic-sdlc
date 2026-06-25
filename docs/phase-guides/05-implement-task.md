@@ -19,7 +19,7 @@ Per task, under the configured `artifact_root` (default `ai_docs`):
 - `explorations/<task-id>.md`, the exploration report (feature-explorer).
 - `task-briefs/<task-id>.md`, the task brief (task-preparer).
 - The code and tests for the task (the developer with Claude).
-- `reviews/<task-id>/<dimension>.md`, one file per reviewer in the roster (code-reviewer).
+- `reviews/<task-id>/<dimension>.md`, one file per reviewer in the roster (the `reviewer-<dimension>` agents).
 - `reviews/<task-id>/consolidated.md`, the authoritative consolidated verdict (review-consolidator).
 - `walkthroughs/<task-id>.md`, the execution-flow-ordered walkthrough (code-walkthrough).
 - The spec document updated in place to match what was built, and `reconciliations/<task-id>.md`, the audit trail of what changed and why (spec-reconciler).
@@ -34,12 +34,12 @@ The orchestrator also updates the task's row in `specs/index.md` after each stag
   - `feature-explorer`, read-only. Runs in preparation mode and writes the exploration report. It is also the side-quest agent during implementation: any investigation that would otherwise read five or more files is delegated to it in ad-hoc mode, where it returns findings directly and writes no report.
   - `task-preparer`. Reads the spec, the exploration, and the reference docs, and writes the self-contained task brief, classifying the task HITL or AFK.
   - The implement stage has no agent. The developer implements with Claude, reading the brief, the exploration, and the reference docs, following the test plan with TDD vertical slices (one failing test, minimal code to pass, repeat, then refactor), running `test_gate.commands` as the local gate, and stopping at each HITL checkpoint in the brief.
-  - `code-reviewer`, read-only, spawned once per dimension in `review.roster`, all in parallel in a single batch, honouring `review.mode`. Each reviewer owns one dimension, treats code and deployed configuration as the only source of truth, takes the diff as the trigger and prime suspect but never the search boundary, asserts no finding as live or as Critical or High without a trace to the actual `file:line`, and writes its own dimension file. The orchestrator waits for the whole panel before consolidating.
+  - the `reviewer-<dimension>` agents, read-only, one per dimension in `review.roster`, all in parallel in a single batch, honouring `review.mode`. Each reviewer owns one dimension, treats code and deployed configuration as the only source of truth, takes the diff as the trigger and prime suspect but never the search boundary, asserts no finding as live or as Critical or High without a trace to the actual `file:line`, and writes its own dimension file. The orchestrator waits for the whole panel before consolidating.
   - `review-consolidator`. Runs only after the whole panel finishes. It reads every reviewer file, deduplicates overlapping findings, resolves disagreements, re-validates each surviving finding against the actual code to kill false positives, ranks by severity (irreversibility times silence times blast radius), and writes the consolidated verdict, which is `safe to proceed`, `changes required`, or `reconciliation needed`.
   - `code-walkthrough`. Reads the brief, the exploration, the consolidated review, the reference docs, and every implementation file, traces the execution flow, and writes the walkthrough ordered by how the code runs, each stop linked to a brief requirement.
   - `spec-reconciler`. Takes the implementation as ground truth. It updates the spec document in place to reflect what was built, updates the context doc and reference docs, records any qualifying decision, and writes the reconciliation report as the audit trail.
 
-The standalone review path spawns the `code-reviewer` panel and then the `review-consolidator` for any existing change, with no brief or exploration required. The outputs land in the same `reviews/<task-id>/` location, and the registry is updated only if the change corresponds to a registered task.
+The standalone review path spawns the reviewer panel and then the `review-consolidator` for any existing change, with no brief or exploration required. The outputs land in the same `reviews/<task-id>/` location, and the registry is updated only if the change corresponds to a registered task.
 
 The loop is resumable: the orchestrator reads the artifacts already present and the registry status, then continues from the first stage whose output is missing, and does not re-run a stage whose output already exists unless the developer asks.
 

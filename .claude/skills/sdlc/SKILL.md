@@ -53,4 +53,4 @@ The front half (phases 0 to 3) is interactive: the skills converse with you and 
 
 ## Code review
 
-Code review is a standard stage of `implement-task`, not an optional extra. A panel of reviewers (one `code-reviewer` per dimension in `review.roster`) runs in parallel, then `review-consolidator` produces the authoritative verdict. The panel can also be run standalone on an existing change.
+Code review is a standard stage of `implement-task`, not an optional extra. A panel of reviewers (one `reviewer-<dimension>` agent per dimension in `review.roster`, under `.claude/agents/reviewers/`) runs in parallel, then `review-consolidator` produces the authoritative verdict. The panel can also be run standalone on an existing change.

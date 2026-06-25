@@ -52,7 +52,7 @@ Phase 4 runs a fixed loop per task. Each step has one job, writes one artifact, 
 1. Explore. The feature-explorer reads the spec, the reference documents, the codebase, related repositories, and online documentation, and writes an exploration for the task. This is read-only investigation that establishes what exists and what the task must touch, before any code is written.
 2. Prepare. The task-preparer reads the spec, the exploration, and the reference documents, and writes a task brief: the concrete, scoped plan for this one task. The mapping from task to spec is a lookup in the task registry, not a hardcoded rule.
 3. Implement. The developer, working with Claude, writes the code and the tests. This is the only step that changes source code.
-4. Review panel. The code-reviewer is spawned once per review dimension, in parallel, read-only, and each reviewer writes its own findings file under the task's review directory.
+4. Review panel. One reviewer agent is spawned per review dimension, in parallel, read-only, and each reviewer writes its own findings file under the task's review directory.
 5. Consolidate. The review-consolidator reads every reviewer's file and writes the single authoritative consolidated verdict.
 6. Walkthrough. The code-walkthrough reads the task brief, the exploration, the consolidated review, and the reference documents, and writes an execution-flow-ordered walkthrough for the developer to audit before merge.
 7. Reconcile. The spec-reconciler takes the implementation as ground truth, updates the spec document in place so it reflects what was actually built, updates the reference documents and decision records, and writes a reconciliation report as the audit trail of what changed and why.
@@ -63,7 +63,7 @@ The loop is the same for every task, which is what makes it headless and repeata
 
 The review panel is a standard stage of the implementation loop, not an optional side call, and it is also invocable on its own. Its design is the heart of the framework's quality model.
 
-The panel is a roster of adversarial single-dimension reviewers. Each reviewer is a code-reviewer subagent spawned with exactly one dimension to scrutinise, run in parallel with the others, and read-only. One reviewer looks only at spec conformance, another only at correctness, another only at state and concurrency, and so on across the roster. Confining each reviewer to a single dimension keeps it sharp on that dimension and stops the diffusion of attention that happens when one reviewer is asked to judge everything at once. The default roster is nine dimensions:
+The panel is a roster of adversarial single-dimension reviewers. Each reviewer is a dedicated subagent owning exactly one dimension, run in parallel with the others, and read-only. One reviewer looks only at spec conformance, another only at correctness, another only at state and concurrency, and so on across the roster. Confining each reviewer to a single dimension keeps it sharp on that dimension and stops the diffusion of attention that happens when one reviewer is asked to judge everything at once. The default roster is nine dimensions:
 
 - spec-conformance
 - correctness

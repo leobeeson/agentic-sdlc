@@ -63,7 +63,7 @@ ai_docs/
 | 1 | Explore | feature-explorer | Spec document + codebase + reference docs | `explorations/<task-id>.md` |
 | 2 | Prepare | task-preparer | Spec + exploration + reference docs | `task-briefs/<task-id>.md` |
 | 3 | Implement | the developer with Claude | Brief + exploration | Code + tests |
-| 4 | Review panel | code-reviewer (one per dimension, in parallel) | Diff vs base ref + spec + code | `reviews/<task-id>/<dimension>.md` |
+| 4 | Review panel | reviewer-<dimension> (one per dimension, in parallel) | Diff vs base ref + spec + code | `reviews/<task-id>/<dimension>.md` |
 | 5 | Consolidate | review-consolidator | Every reviewer file for the task | `reviews/<task-id>/consolidated.md` |
 | 6 | Walkthrough | code-walkthrough | Brief + exploration + consolidated review + code | `walkthroughs/<task-id>.md` |
 | 7 | Reconcile | spec-reconciler | Consolidated review + spec | Updated spec in place + `reconciliations/<task-id>.md` |
@@ -156,9 +156,9 @@ Registry: keep the task status at `in-progress` while implementation is underway
 
 ## Phase 4: Review panel
 
-Agent: `code-reviewer`, read-only, spawned once per dimension.
+Agents: the `reviewer-<dimension>` agents in `.claude/agents/reviewers/`, read-only, one per dimension.
 
-Spawn one `code-reviewer` per dimension in `review.roster`, all in parallel, in a single batch. Each reviewer obeys the no-assert-without-trace contract: code and deployed configuration are the only source of truth, the diff is the trigger and prime suspect but never the search boundary, and no finding is asserted without a trace to the actual file and line. Each reviewer receives its `dimension`, the `task_id`, and `base_ref` resolved from `vcs.default_base_branch`.
+Spawn one reviewer per dimension in `review.roster`, mapping each dimension to its `reviewer-<dimension>` agent under `.claude/agents/reviewers/`, all in parallel, in a single batch. Each reviewer obeys the no-assert-without-trace contract: code and deployed configuration are the only source of truth, the diff is the trigger and prime suspect but never the search boundary, and no finding is asserted without a trace to the actual file and line. Each reviewer receives the `task_id` and `base_ref` resolved from `vcs.default_base_branch`.
 
 Honour `review.mode`:
 
@@ -168,15 +168,15 @@ Honour `review.mode`:
 Invoke (one line per dimension, all spawned concurrently):
 
 ```
-Run code-reviewer for TASK-001, dimension spec-conformance, base_ref master
-Run code-reviewer for TASK-001, dimension correctness, base_ref master
-Run code-reviewer for TASK-001, dimension state-and-concurrency, base_ref master
-Run code-reviewer for TASK-001, dimension security-and-trust-boundary, base_ref master
-Run code-reviewer for TASK-001, dimension failure-and-robustness, base_ref master
-Run code-reviewer for TASK-001, dimension observability, base_ref master
-Run code-reviewer for TASK-001, dimension test-adequacy, base_ref master
-Run code-reviewer for TASK-001, dimension interface-and-data-integrity, base_ref master
-Run code-reviewer for TASK-001, dimension conventions, base_ref master
+Run reviewer-spec-conformance for TASK-001, base_ref master
+Run reviewer-correctness for TASK-001, base_ref master
+Run reviewer-state-and-concurrency for TASK-001, base_ref master
+Run reviewer-security-and-trust-boundary for TASK-001, base_ref master
+Run reviewer-failure-and-robustness for TASK-001, base_ref master
+Run reviewer-observability for TASK-001, base_ref master
+Run reviewer-test-adequacy for TASK-001, base_ref master
+Run reviewer-interface-and-data-integrity for TASK-001, base_ref master
+Run reviewer-conventions for TASK-001, base_ref master
 ```
 
 The reviewers run concurrently. Each writes its own file at `<artifact_root>/reviews/<task-id>/<dimension>.md`, giving full visibility into the raw findings before they are merged.
@@ -205,7 +205,7 @@ Registry: set the task status to `implemented` and link the consolidated review.
 
 The review panel and the consolidator are not only inner phases. They can be run on their own against any existing change, with no brief or exploration required. To review a branch or a working change directly:
 
-1. Spawn the `code-reviewer` panel as in phase 4, passing the `task_id` (or a label for the change) and the `base_ref` to diff against, honouring `review.mode`.
+1. Spawn the reviewer panel as in phase 4, passing the `task_id` (or a label for the change) and the `base_ref` to diff against, honouring `review.mode`.
 2. After the panel finishes, run `review-consolidator` for the same identifier.
 
 The outputs land in the same `reviews/<task-id>/` location. Update the registry only if the change corresponds to a registered task.

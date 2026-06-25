@@ -1,0 +1,71 @@
+# sdlc.config.yaml schema (annotated reference)
+#
+# This file documents the shape of the per-project profile. It is the single
+# source of every project-specific fact the pipeline reads. The authoritative
+# validator is the Pydantic V2 model in ../scripts/scaffold.py; this file is the
+# human-readable reference and is kept consistent with that model.
+#
+# A concrete sdlc.config.yaml lives at the target repository root and is
+# generated at setup (greenfield interview or brownfield scan).
+
+project:
+  name: string                      # the project name
+  description: string               # one or two sentences
+  kind: greenfield | brownfield     # greenfield: interview. brownfield: scan an existing repo.
+
+artifact_root: ai_docs              # root directory for every pipeline artifact
+
+task:
+  id_scheme: "TASK-{NNN}"           # flat, global sequence. No epics or stories.
+  spec_grouping: by-concern         # spec documents group tasks by area, for readability only
+
+vcs:
+  default_base_branch: master       # the branch reviews and diffs compare against
+  branch_scheme: "feature/{task-id-lower}-{slug}"
+
+tech_stack:
+  language: string                  # for example python, typescript
+  package_manager: string           # for example uv, pnpm
+  # further fields are permitted and are detected at setup or supplied by interview,
+  # for example runtime_version, frameworks, linters, type_checker
+
+test_gate:
+  commands:                         # the exact commands that run the test suite
+    - "uv run pytest -q"
+  conventions_doc: reference/testing-conventions.md
+  test_naming: "test_{behaviour}"
+
+deploy_config:                      # optional, populated only for projects with a deployment surface
+  detected: false
+  config_files: []                  # paths to deployment configuration the robustness reviewer reads
+  # further fields are permitted, for example infra_tool, scaling_knobs, feature_flags
+
+reference:
+  context_doc: reference/CONTEXT.md  # the domain glossary every agent reads
+  adr_dir: reference/adr             # architectural decision records
+
+review:
+  mode: thorough | light             # thorough runs the full roster, light runs a subset
+  roster:                            # the review panel dimensions, each spawned as one code-reviewer
+    - spec-conformance
+    - correctness
+    - state-and-concurrency
+    - security-and-trust-boundary
+    - failure-and-robustness
+    - observability
+    - test-adequacy
+    - interface-and-data-integrity
+    - conventions
+  consolidator: review-consolidator
+  severity_model: "irreversibility x silence x blast-radius"
+
+failure_patterns:                    # greppable, evidenced idioms per failure class, used by reviewers
+  state_consistency: []              # each entry: {pattern, breaks, cite, severity}
+  trust_boundary: []
+  observability: []
+  robustness: []
+  live_path_wiring: []
+
+subsystem_index:                     # optional map from file globs to subsystems, off by default
+  enabled: false
+  path: null

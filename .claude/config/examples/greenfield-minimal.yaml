@@ -1,0 +1,59 @@
+project:
+  name: example-greenfield
+  description: A new service started from an empty repository.
+  kind: greenfield
+
+artifact_root: ai_docs
+
+task:
+  id_scheme: "TASK-{NNN}"
+  spec_grouping: by-concern
+
+vcs:
+  default_base_branch: master
+  branch_scheme: "feature/{task-id-lower}-{slug}"
+
+tech_stack:
+  language: python
+  package_manager: uv
+  runtime_version: ">=3.12"
+
+test_gate:
+  commands:
+    - "uv run pytest -q"
+  conventions_doc: reference/testing-conventions.md
+  test_naming: "test_{behaviour}"
+
+deploy_config:
+  detected: false
+  config_files: []
+
+reference:
+  context_doc: reference/CONTEXT.md
+  adr_dir: reference/adr
+
+review:
+  mode: thorough
+  roster:
+    - spec-conformance
+    - correctness
+    - state-and-concurrency
+    - security-and-trust-boundary
+    - failure-and-robustness
+    - observability
+    - test-adequacy
+    - interface-and-data-integrity
+    - conventions
+  consolidator: review-consolidator
+  severity_model: "irreversibility x silence x blast-radius"
+
+failure_patterns:
+  state_consistency: []
+  trust_boundary: []
+  observability: []
+  robustness: []
+  live_path_wiring: []
+
+subsystem_index:
+  enabled: false
+  path: null

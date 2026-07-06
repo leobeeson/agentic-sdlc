@@ -1,0 +1,73 @@
+# Recipe family: adp-foundry-yaml (generation target)
+#
+# This family repeats the five dbt-model sequences with two substitutions: the
+# grounding artefact is the ADP Foundry operator reference rather than the
+# warehouse-schema snapshot, and the generation stage is the ADP Foundry YAML
+# generator. Every rule stated at the top of recipes/dbt-model.yaml (pruning,
+# idempotency, mandatory stages, defaults-not-laws) applies unchanged here.
+
+target: adp-foundry-yaml
+grounding:
+  stage: ground-generation
+  role: foundry-operator-reference
+  artefact: ai_docs/reference/operator-reference.md
+  staleness_rule: run when the reference is missing or the mirrored operator documentation has changed since the reference was written
+generation:
+  stage: generate
+  role: adp-foundry-yaml-generator
+
+# The stage catalogue is identical to recipes/dbt-model.yaml except for the two
+# substituted rows below; consult that file for the shared rows' inclusion
+# conditions, defaults, gates, and mandatory flags.
+substituted_stages:
+  - stage: ground-generation
+    role: foundry-operator-reference
+    primitive: subagent
+    included_when: the operator reference is missing or stale
+    default: every magnitude, driven by staleness, not magnitude
+    writes: ai_docs/reference/operator-reference.md
+  - stage: generate
+    role: adp-foundry-yaml-generator
+    primitive: subagent
+    per_task: true
+    included_when: "always: this stage is the intent"
+    default: every magnitude
+    writes: the ADP Foundry YAML configuration, in the application repository at the DAG configuration directory sdlc.config.yaml records
+
+recipes:
+  bug-fix:
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  feature-update:
+    - requirements
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  new-feature:
+    - requirements
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-capability:
+    - project-charter
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-project:
+    - project-charter
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record

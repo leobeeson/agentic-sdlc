@@ -1,0 +1,71 @@
+# Recipe families: the five non-generation targets.
+#
+# These targets carry no magnitude, because there is nothing for the ladder to
+# measure: a branch or pull-request review scopes by the size and risk of the
+# diff, documentation scopes by the surface being documented, and a
+# conversation, an onboarding question, or an access request needs no scoping.
+# Each family is therefore a single short recipe.
+#
+# The branch-review recipe is the sharpest demonstration of the
+# same-agent-two-bindings rule: because every reviewer's only required input is
+# the diff, the entire downstream runs with no upstream pipeline at all, on work
+# the pipeline never saw.
+
+families:
+
+  branch-review:
+    recipe:
+      - stage: classify-risk
+        role: risk-classifier
+        primitive: subagent
+        reads: the branch or pull-request diff, supplied by the developer
+        writes: the risk tier and the reviewer-subset recommendation, under reviews/<task-id>/
+      - stage: review
+        role: the reviewer subset the risk-classifier recommends, spawned in parallel in one message
+        primitive: subagent
+        mandatory: true
+        writes: one review per dimension, under reviews/<task-id>/
+      - stage: consolidate
+        role: review-consolidator
+        primitive: subagent
+        mandatory: true
+        writes: reviews/<task-id>/consolidated.md
+      - stage: record
+        role: orchestrator
+        writes: run-record/ in the initiative workspace
+    notes: the walkthrough joins on the developer's request.
+
+  documentation:
+    recipe:
+      - stage: generate-documentation
+        role: documentation-generator
+        primitive: subagent
+        reads: the code as ground truth, plus the spec and context where present
+        writes: the documentation artefacts
+      - stage: record
+        role: orchestrator
+        writes: run-record/ in the initiative workspace
+
+  framework-onboarding:
+    recipe: []
+    notes: >
+      No stages: the main agent answers in the conversation under its own
+      instructions, spawning the feature-explorer when a question needs
+      investigation. Nothing is composed and no product changes.
+
+  ad-hoc-conversation:
+    recipe: []
+    notes: >
+      No stages: the main agent converses, spawning the feature-explorer for
+      investigation. Nothing in the product changes.
+
+  access-provisioning:
+    recipe:
+      - stage: provision
+        role: access-provisioning
+        primitive: skill
+        reads: the developer's stated onboarding need, and the access catalogue under ai_docs/reference/ where present
+        writes: ai_docs/initiatives/<initiative-id>/access-guide.md
+      - stage: record
+        role: orchestrator
+        writes: run-record/ in the initiative workspace

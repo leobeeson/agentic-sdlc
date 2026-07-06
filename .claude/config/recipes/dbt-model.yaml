@@ -1,0 +1,178 @@
+# Recipe family: dbt-model (generation target)
+#
+# A recipe is a named, reusable stage sequence for one intent: one target at one
+# magnitude. The orchestration skill reads this declaration; the recipe is rails
+# with junctions, not a fixed list. The orchestrator selects the recipe keyed by
+# the classified magnitude, then walks it once and decides every stage by the
+# four pruning criteria: magnitude (the inclusion conditions below), idempotency
+# (an artefact that exists at its deterministic path and validates is reused),
+# risk (the reviewer subset scales with the risk-classifier's recommendation),
+# and the agent availability switch in sdlc.config.yaml. Every inclusion and
+# exclusion lands in the run record with a one-line rationale before anything
+# executes.
+#
+# Three facts hold for every recipe in this family and are not repeated per row:
+# - Intake classification precedes every recipe; the classification selects the
+#   recipe, so no recipe lists it as a stage.
+# - The grounding stage runs whenever its snapshot is missing or stale, at any
+#   point before generation, and is otherwise satisfied by idempotency.
+# - Every sequence is a default, not a law. The orchestrator adds a stage the
+#   sequence omits when the stated intent answers its inclusion condition
+#   differently from the magnitude default, and records why.
+
+target: dbt-model
+grounding:
+  stage: ground-generation
+  role: schema-retrieval-warehouse
+  artefact: ai_docs/reference/schema-snapshot.md
+  staleness_rule: run when the snapshot is missing, or older than the target sources' last known change, or does not cover the sources the spec names
+generation:
+  stage: generate
+  role: dbt-model-generator
+
+# The canonical stage catalogue: the deepest recipe of the family, with each
+# optional stage's inclusion condition and default. "gate: developer" marks a
+# human-in-the-loop pause the plan composes in. "mandatory: true" marks a stage
+# immune to the availability switch and to pruning in any composition that
+# changes the product.
+stages:
+  - stage: project-charter
+    role: project-charter
+    primitive: skill
+    included_when: the project's purpose, scope, or constraints are unrecorded, or the intent extends them
+    default: new-project; checked at new-capability
+    writes: ai_docs/charter.md
+    gate: developer confirmation inside the consultation
+  - stage: requirements
+    role: requirements-navigator
+    primitive: skill
+    included_when: the intent changes what the product must do
+    default: feature-update and above
+    writes: ai_docs/prd.md
+    gate: developer confirmation inside the consultation
+  - stage: architecture
+    role: arch-blueprint
+    primitive: skill
+    included_when: "the intent changes the architectural design: a new component, a changed data flow, a new integration, a decision worth an ADR"
+    default: new-capability and above; at new-feature when the intent changes the architectural design
+    writes: ai_docs/architecture.md and ai_docs/reference/adrs/
+    gate: developer confirmation inside the consultation
+  - stage: plan
+    role: implementation-planner
+    primitive: skill
+    included_when: the work decomposes into more than one task, or needs an ordered, tracked breakdown
+    default: new-feature and above
+    writes: implementation-plan.md, specs/, and the task registry, in the initiative workspace
+    gate: developer confirmation inside the consultation
+  - stage: ground-generation
+    role: schema-retrieval-warehouse
+    primitive: subagent
+    included_when: the warehouse-schema snapshot is missing or stale
+    default: every magnitude, driven by staleness, not magnitude
+    writes: ai_docs/reference/schema-snapshot.md
+  - stage: explore
+    role: feature-explorer
+    primitive: subagent
+    per_task: true
+    included_when: the implementation needs codebase context the spec and the reference documents do not carry
+    default: new-feature and above, per task; on demand below
+    writes: explorations/<task-id>.md in the initiative workspace
+  - stage: prepare
+    role: task-preparer
+    primitive: subagent
+    per_task: true
+    included_when: "always for a generation target: every generated change executes against a prepared specification"
+    default: every magnitude
+    writes: task-briefs/<task-id>.md in the initiative workspace
+  - stage: generate
+    role: dbt-model-generator
+    primitive: subagent
+    per_task: true
+    included_when: "always: this stage is the intent"
+    default: every magnitude
+    writes: the dbt model and its schema file, in the application repository at the location sdlc.config.yaml records
+  - stage: classify-risk
+    role: risk-classifier
+    primitive: subagent
+    per_task: true
+    included_when: the product changed
+    default: every magnitude
+    writes: the risk tier and the reviewer-subset recommendation, under reviews/<task-id>/
+  - stage: review
+    role: the reviewer subset the risk-classifier recommends, spawned in parallel in one message
+    primitive: subagent
+    per_task: true
+    mandatory: true
+    included_when: the product changed; mandatory, immune to the availability switch
+    default: every magnitude; the subset scales with risk; the full panel by default at new-project
+    writes: one review per dimension, under reviews/<task-id>/
+  - stage: consolidate
+    role: review-consolidator
+    primitive: subagent
+    per_task: true
+    mandatory: true
+    included_when: the product changed; mandatory, immune to the availability switch
+    default: every magnitude
+    writes: reviews/<task-id>/consolidated.md
+    gate: the developer acts on a "no" verdict; an "after fixes" verdict loops the blockers back to the generator and re-validates
+  - stage: walkthrough
+    role: code-walkthrough
+    primitive: subagent
+    per_task: true
+    included_when: the developer must carry the understanding of the change forward
+    default: new-feature and above; on request below
+    writes: walkthroughs/<task-id>.md
+  - stage: reconcile
+    role: reconciler
+    primitive: subagent
+    per_task: true
+    mandatory: true
+    included_when: checked at every task boundary; acts only on downstream impact
+    default: every magnitude
+    writes: reconciliations/<task-id>.md, and the updated downstream artefacts
+  - stage: record
+    role: orchestrator
+    mandatory: true
+    included_when: always
+    default: every magnitude
+    writes: run-record/ in the initiative workspace, written throughout the run and closed at the end
+
+# The five recipes of the family: the stage sequences the conditions above
+# produce when the default answers for each magnitude are applied.
+recipes:
+  bug-fix:
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  feature-update:
+    - requirements   # update the affected requirement
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  new-feature:
+    - requirements
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-capability:
+    - project-charter   # checked against the extended scope
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-project:
+    - project-charter
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record

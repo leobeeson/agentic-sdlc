@@ -1,115 +1,62 @@
 # Methodology
 
-This document explains the conceptual model behind the agentic software development lifecycle framework: how it is structured, why it is structured that way, and what each part is for. It is the reasoning behind the system, not a how-to. The step-by-step instructions live in `getting-started.md` and the phase guides.
+This document explains the operating model behind the agentic SDLC harness: what the harness is, the problem the harness is designed around, the rules that govern every part, and the shapes work takes as it moves through the system. The step-by-step instructions live in `getting-started.md` and the guides.
 
-## The design thesis
+## The harness thesis
 
-One decision governs everything else. The framework ships as a project-agnostic spine, and every project-specific fact lives in a single per-project profile, `sdlc.config.yaml`. The spine is the set of agents, skills, commands, and scripts. The profile is one YAML file at the target repository root, generated once at setup and then read in slices by every agent that runs.
+An agent is a model plus a harness, running a loop until a stopping condition. The model is the reasoning engine, the part a team rents. The harness is everything wrapped around the model so the model can finish a job: instructions and rule files, tools, orchestration logic, guardrails, and observability. The harness is roughly 90 per cent of what determines an agent's behaviour, and the harness is the part a team builds and owns.
 
-The spine never changes per project. There are no per-project edits to an agent, no forked skill, no patched script. A project differs from another project only in its profile. This is the line that makes the framework portable: the same spine drives a Python service, a TypeScript application, a greenfield prototype, or a brownfield codebase, because everything that varies has been pulled out of the spine and into the profile.
+This repository is a harness extension for Claude Code. Installing it adds no second agent and no second loop; the result is one agent, Claude Code, running under a thicker and more specialised harness that turns a general-purpose coding agent into a software development lifecycle agent. Writing an agent definition is trivial, one markdown file with a frontmatter block and a page of instructions. The value sits in the harness around those files: the intake classification, the orchestration, the recipes, the scoping, the shared memory, and the grounding.
 
-This matters for several concrete reasons.
+## The 80 per cent problem
 
-- Portability. Copying the spine into a new repository and writing one profile is the whole setup. There is no surgery on the agents to teach them about the new project.
-- A single source of coupling. Every project-specific fact lives in one file, so there is exactly one place to look when behaviour depends on the project, and exactly one place to change it.
-- Safe upgrades. Because the spine is untouched per project, a newer version of the spine can be dropped into a repository without unpicking local modifications.
-- Predictability. Two projects running the same spine version behave identically except where their profiles differ, which makes the framework's behaviour legible across projects.
+A coding agent used on its own generates roughly 80 per cent of a feature quickly. The remaining 20 per cent is not the harder programming; it is the part whose correctness depends on knowledge the model does not have: the actual schema of the warehouse, the actual parameter contract of a framework operator, the team's conventions, and the business rules in engineers' heads. The errors this produces are conceptual, not syntactic: a generated dbt model can compile, run, and pass its basic tests while joining on the wrong key, because the model guessed the schema instead of reading it.
 
-The profile holds the tech stack, test commands, base branch, branch naming, conventions, the review roster and mode, failure-pattern idioms, and the artifact root. Hardcoded story prefixes, branch names, test commands, and audit paths are all gone from the spine; each is a profile field or is derived from the generated task registry. An agent that needs a project fact resolves its slice of the profile rather than carrying the fact in its own definition.
+The harness answers on both sides of the generation step.
 
-## The unit of work
+- Before generation, the harness supplies the missing knowledge as artefacts the generating agent is required to read: a retrieved snapshot of the warehouse schema, a mirrored reference of the operator contracts, the project's recorded vocabulary, and a per-task specification that turns an ambiguous request into a well-specified task.
+- After generation, the harness verifies without trusting appearances: a capped testing loop runs the real validators, a review panel reads the change against the specification, a consolidator re-validates every finding against the code and emits one verdict, a walkthrough ensures the developer understands the change, and reconciliation updates the recorded plan wherever the implementation diverged from it.
 
-The unit of work in the implementation phase is a flat task, identified by a single global sequence such as `TASK-001` and `TASK-002`. There is no epic or story hierarchy inside the pipeline. A task is the thing that flows through the whole implementation loop: explore, prepare, implement, review, walkthrough, reconcile.
+What remains after both sides have done their work is judgement: ambiguous requirements, architectural trade-offs, and the final decision that a change is correct. The harness routes exactly those questions to the developer at defined gates.
 
-Epic and story are product-planning vocabulary, and they belong to the requirements phase, where they help reason about scope and priority. They do not survive into the pipeline as structural levels, because a hierarchy of work items buys nothing once work is actually being built and adds coordination overhead at every stage. A flat sequence is simpler to track, simpler to address, and simpler to reason about.
+## The seven axioms
 
-Readability still matters, so tasks are grouped, but only for human reading. A spec document is a markdown file under `specs/`, one file per area of concern, named `specs/NN-<area>.md`, and it contains the tasks for that area. This grouping is file organisation and nothing more. It is not a formal hierarchy level, it does not change how a task is identified, and it does not change how a task flows through the loop. The grouping exists so a person can find related tasks together, not so the pipeline can reason about a tree.
+- **The artefact-bus axiom.** Work moves between agents only as durable artefacts on the artefact tree: every agent reads its inputs from the bus and writes its output to the bus, and no agent obtains work from another agent directly. Every subagent boots fresh, so everything an agent needs must already be present in the artefacts it reads.
+- **The contract axiom.** Every agent role declares its contract, the input artefacts it reads and the output artefacts it writes, so producer and consumer roles are independently buildable, and the agent registry is generated by scanning the declarations rather than maintained by hand.
+- **The semantic-signals axiom.** A declared input is information that must be present, not a format that must be matched: when something is missing, the agent elicits it, infers it from convention, or falls back to a declared default, rather than rejecting the run.
+- **The single-caller axiom.** The orchestrator is the only caller of subagents. Claude Code permits two spawn layers, and a subagent cannot spawn further subagents, so all sequencing, gating, and consolidation live in the one main agent, and parallelism is won by spawning several subagents in one message.
+- **The same-agent-two-bindings axiom.** A standalone run and a composed run use the same agent definition; only the source of each input differs, the developer supplying it directly in one case and an upstream agent's artefact in the other.
+- **The recipe-guidance axiom.** The orchestrator is guided by predefined recipes, and the judgement inside each step is the model's, so a recipe-guided run is a semi-hard workflow: repeatable, but not deterministic. When no recipe fits, the orchestrator decomposes the work dynamically.
+- **The no-new-technology axiom.** Nothing here requires technology beyond Claude Code, markdown, YAML, and Python scripting run with uv.
 
-## The phase model
+## The pipeline shape
 
-The pipeline runs in phases, and the phases fall into two halves with deliberately different interaction models.
+The three generation targets are not three pipelines. They are one pipeline that converges, diverges at exactly one stage, and converges again.
 
-The front half is interactive. The skills converse with the developer to elicit and shape the early artifacts, they run in the main context, and they may spawn research subagents to fan out work and merge it back. This is judgment-heavy work where a person should be in the loop.
+- The shared upstream converges: intent, then requirements and PRD, then architecture and ADRs, then the implementation plan, then the per-task spec, with the feature-explorer and the task-preparer grounding each task immediately before generation.
+- The pipeline diverges at exactly one generation stage, selected by the classified target: an ADP Foundry YAML configuration, a dbt model with its schema file, or ad-hoc code.
+- The shared downstream converges again: the risk classification, the review panel, the consolidation, the walkthrough, the reconciliation, and the run record.
 
-The back half is headless. An orchestration skill drives subagents that run in fresh context, report evidence, and never converse. This is execution-heavy work where the value comes from disciplined, repeatable, evidence-backed steps rather than conversation.
+Everything above the divergence exists to supply the knowledge the generating agent lacks. Everything below the re-convergence exists to verify the generated artefact rather than trust its appearance. The upstream is shared because specification work is the same work whatever the target; what changes per target is the grounding artefact. The downstream is shared because every reviewer's one required input is the produced change itself, so the panel does not care which generation path produced it.
 
-Before any phase runs, there is setup. Setup creates the complete artifact tree, with every directory documented, and writes the profile, either through a greenfield interview or a brownfield scan of the existing repository. Setup is run once. The profile it produces is how the project is built; everything that follows is what and why it is built.
+## Intent on two dimensions
 
-The phases are as follows.
+The concierge, the intake role the main agent plays, classifies every stated intent before anything is composed.
 
-- Phase 0, charter. The `initialise-project` skill produces the charter: vision, objectives, success metrics, constraints, stakeholders, and risks. The profile already exists by this point because every agent, including this one, reads it.
-- Phase 1, requirements. The `define-requirements` skill reads the charter and produces a requirements document with requirement identifiers, MoSCoW priority, user personas, and acceptance criteria in a Given/When/Then grammar. It may fan out requirements-analyst subagents for personas, functional requirements, and edge cases, then merge.
-- Phase 2, architecture. The `design-architecture` skill reads the requirements and produces the architecture document, diagrams, seeds for the reference documents, and architectural decision records. It may spawn architecture-advisor subagents to weigh trade-offs in parallel.
-- Phase 3, plan. The `plan-implementation` skill reads the architecture and the requirements and produces the implementation plan, the spec documents, and the task registry. It may spawn plan-decomposer subagents to break work into tasks and write the specs.
-- Phase 4, implement. The `implement-task` orchestration skill runs the per-task loop, headless, once per task.
+- The **target** names the kind of work and selects the recipe family. The eight targets are a closed enumeration: `adp-foundry-yaml`, `dbt-model`, `ad-hoc-code`, `branch-review`, `documentation`, `framework-onboarding`, `ad-hoc-conversation`, and `access-provisioning`. A target outside the list cannot run, because no recipe binds to it.
+- The **magnitude** applies only to the three generation targets and says how much of the lifecycle the work needs: `bug-fix`, `feature-update`, `new-feature`, `new-capability`, and `new-project`, each defined by what the intent does to the product, never by how many lines it touches.
 
-Phase 3 is the join. The front half is conversational planning; the back half is headless execution. Phase 3 sits between them and emits exactly what the implementation loop consumes: spec documents and a task registry. The implementation loop never had to author these before; it assumed they existed. Phase 3 is the phase that produces them, which is why it is the seam where the two halves meet.
+The magnitude selects the recipe within the target's family, sets the model dial for the run, and sets the default depth of supporting work. Risk is a separate judgement made after generation: magnitude measures how much lifecycle the work needs, risk measures how dangerous the produced change is, and the two do not track each other. The full vocabulary lives in `.claude/config/intents.yaml`; the guide `guides/recipes-and-magnitude.md` shows how the classification becomes a plan.
 
-## The implementation loop
+## The two composition primitives
 
-Phase 4 runs a fixed loop per task. Each step has one job, writes one artifact, and hands a known input to the next step. The steps run in this order.
+Every unit of work runs as one of two Claude Code forms, decided by one question: does the work need a back-and-forth with the developer, or does the developer drive it step by step?
 
-1. Explore. The feature-explorer reads the spec, the reference documents, the codebase, related repositories, and online documentation, and writes an exploration for the task. This is read-only investigation that establishes what exists and what the task must touch, before any code is written.
-2. Prepare. The task-preparer reads the spec, the exploration, and the reference documents, and writes a task brief: the concrete, scoped plan for this one task. The mapping from task to spec is a lookup in the task registry, not a hardcoded rule.
-3. Implement. The developer, working with Claude, writes the code and the tests. This is the only step that changes source code.
-4. Review panel. One reviewer agent is spawned per review dimension, in parallel, read-only, and each reviewer writes its own findings file under the task's review directory.
-5. Consolidate. The review-consolidator reads every reviewer's file and writes the single authoritative consolidated verdict.
-6. Walkthrough. The code-walkthrough reads the task brief, the exploration, the consolidated review, and the reference documents, and writes an execution-flow-ordered walkthrough for the developer to audit before merge.
-7. Reconcile. The spec-reconciler takes the implementation as ground truth, updates the spec document in place so it reflects what was actually built, updates the reference documents and decision records, and writes a reconciliation report as the audit trail of what changed and why.
+- A **skill** is loaded and performed by the main agent itself, in the conversation. The four upstream consultations (project-charter, requirements-navigator, arch-blueprint, implementation-planner), the ad-hoc code implement loop, and access-provisioning are skills, because each is a conversation whose document is the residue of the exchange. A conversational unit of work built as a subagent cannot reach the developer, because a subagent runs in a separate context.
+- A **subagent** is spawned by the main agent in a fresh context, works autonomously from its declared inputs, writes its artefact to the bus, and hands back a fixed four-section completion summary. The feature-explorer, the task-preparer, the generators, the reviewers, the consolidator, the walkthrough, the reconciler, and the grounding agents are subagents. An autonomous unit of work built as a skill fills the main agent's context with work it will never use again.
 
-The loop is the same for every task, which is what makes it headless and repeatable. Each step's output is a durable artifact, so the state of a task is always inspectable, and a task can be picked up, reviewed, or re-run from its artifacts rather than from memory of a conversation.
+The two primitives compose through one mechanism: an artefact written by one stage is the prompt of the next stage. The per-task specification is the clearest case: at once a durable artefact on the bus and the prompt the implementation executes.
 
-## The review panel
+## The shared memory
 
-The review panel is a standard stage of the implementation loop, not an optional side call, and it is also invocable on its own. Its design is the heart of the framework's quality model.
-
-The panel is a roster of adversarial single-dimension reviewers. Each reviewer is a dedicated subagent owning exactly one dimension, run in parallel with the others, and read-only. One reviewer looks only at spec conformance, another only at correctness, another only at state and concurrency, and so on across the roster. Confining each reviewer to a single dimension keeps it sharp on that dimension and stops the diffusion of attention that happens when one reviewer is asked to judge everything at once. The default roster is nine dimensions:
-
-- spec-conformance
-- correctness
-- state-and-concurrency
-- security-and-trust-boundary
-- failure-and-robustness
-- observability
-- test-adequacy
-- interface-and-data-integrity
-- conventions
-
-Every reviewer obeys one hard rule: no assertion without a trace. A finding is not allowed unless it points to the actual file and line in the code or the deployed configuration. Code and deployed configuration are the only source of truth. The diff is the trigger and the prime suspect, but it is never the search boundary; a reviewer follows the behaviour into the rest of the codebase rather than stopping at the changed lines. This rule is what stops the panel from generating plausible-sounding but ungrounded objections.
-
-Severity is not a feeling. It is computed as irreversibility times silence times blast radius.
-
-- Irreversibility is how hard the damage is to undo once it happens.
-- Silence is how quietly it fails, with a fault that fails loudly ranking below one that fails without any signal.
-- Blast radius is how much of the system the fault can reach.
-
-A fault that is irreversible, silent, and wide is the most severe; a fault that is easily undone, loud, and contained is the least. This model puts the focus on faults that are genuinely dangerous rather than on whichever issue is easiest to describe.
-
-After the panel finishes, the review-consolidator turns the raw findings into one verdict. It does four things in sequence.
-
-- Deduplicates findings that several reviewers raised about the same underlying issue.
-- Resolves disagreements between reviewers rather than passing the conflict downstream.
-- Re-validates each surviving finding against the actual code, to kill false positives before they reach the developer.
-- Ranks the survivors by severity and writes the consolidated verdict.
-
-Because every reviewer writes its own file and the consolidator writes a separate authoritative file, both the raw findings and the final verdict are visible. A profile flag selects light mode, a subset of reviewers, or thorough mode, the full roster, because running the whole panel plus a consolidator on every task is expensive and not every task warrants it.
-
-## Living specs
-
-The spec-reconciler updates the spec documents in place. After a task is implemented and reviewed, the reconciler takes the implementation as ground truth and rewrites the relevant spec so it reflects what was actually built, not just what was originally intended. The specs are living documents: at any point, a spec describes the current reality of the system.
-
-This is safe precisely because there is no external tracker. In an earlier design the reconciler could only propose spec changes for a human to review, because a spec change had to be propagated by hand into separate external systems, and an automatic mutation would have desynchronised them. That constraint is gone. The spec is now a purely local file, the implementation is the source of truth, and the spec is mutated in place to match it. Every change the reconciler makes is recorded in a reconciliation report, so an in-place update remains fully reviewable after the fact.
-
-## Self-containment
-
-The framework is self-contained. There are no external trackers and no synchronisation to any outside system. The artifact tree under the configured artifact root is the system of record. Everything the pipeline produces lives there: the charter, the requirements, the architecture, the plan, the specs, the task briefs, the explorations, the reviews, the walkthroughs, the reconciliations, the reference documents, and the decision records.
-
-Tracking lives inside the tree as files. The task registry, `specs/index.md`, is the single registry: it maps each task to its spec document and holds the status board for every task. It is the thing an external tracker would otherwise be, kept as a local file under version control alongside the code it describes. Because the registry and the artifacts are local files, the state of the project is always inspectable in the repository itself, with no dependency on any service.
-
-## Lineage
-
-The framework is not invented from nothing. It is a generalisation of mature, working bodies of work, recombined under the single design thesis.
-
-- The back half, the implementation loop, is generalised from a mature implementation loop that already ran in production in another repository. The agents and the orchestration already worked; the work was decoupling them from one project's hardcoded assumptions, moving those assumptions into the profile, and adding the review panel between implement and walkthrough.
-- The front half, the planning phases, is an upgrade of an earlier set of single-prompt planning consultants. Those were conversational prompts written for a weaker model: project initialisation, requirements, architecture, and implementation planning. Each is rebuilt as a modern agent or skill, with research subagents where fan-out helps, replacing scratchpad caches and token-conservation instructions with real artifact files and current tool use.
-- The review panel generalises an adversarial readiness auditor. The auditor's no-assert-without-trace doctrine, its failure-pattern categories, and its severity reasoning become the shared reviewer contract and four of the roster dimensions, and its single-feature validator becomes the spec-conformance dimension. The standalone audit phase and its CI merge gate are dropped; the adversarial method is kept and folded into the loop.
+The artefact tree has two tiers. Tier one is the project spine, singular and durable, updated in place: the charter, the PRD, the architecture document, the reference directory (vocabulary, testing conventions, ADRs, the grounding snapshots), and the generated agent registry. Tier two is the initiative workspace, one per intent, holding that initiative's plan, specs, task briefs, explorations, reviews, walkthroughs, reconciliations, and run record. Every artefact in a workspace is addressed by the composite join key `<initiative-id>/TASK-XXX`, so a consumer resolves any input by constructing a path, and an artefact that exists at its path and validates lets the orchestrator skip the stage that would produce it. Every artefact conforms to a template under `.claude/templates/` and carries an append-only provenance header. Generated product artefacts land in the application repository at the locations `sdlc.config.yaml` records, never inside the artefact tree.

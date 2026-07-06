@@ -1,127 +1,104 @@
-# Getting Started
+# Getting started
 
-This guide walks you through adopting the agentic SDLC framework in a target repository. You bootstrap the framework into the repository, let Claude Code discover the new agents and skills, run setup, and then drive the pipeline phase by phase.
-
-The framework ships as a project-agnostic spine. Every project-specific fact lives in a single configuration file, `sdlc.config.yaml`, generated once at setup and read in slices by every agent. The spine is never edited per project, and nothing is shared from the framework repository at runtime: everything lives visibly inside your own repository.
+This guide installs the harness into a target repository, runs setup, and drives the first run. The harness ships as a project-agnostic spine: every project-specific fact lives in `sdlc.config.yaml`, generated once at setup, and the spine is never edited per project.
 
 ## Prerequisites
 
-- Claude Code, which discovers and runs the agents, skills, and commands.
-- uv, which runs the Python scaffolding CLI. The scaffolding script declares its own dependencies inline, so `uv run` resolves them with no separate install step.
+- Claude Code, which discovers and runs the agents and skills.
+- uv, which runs the Python scripts. Each script declares its dependencies inline, so `uv run` resolves them with no separate install step.
 
-## Step 1: Bootstrap
+## Step 1: Install
 
-From the framework repository, copy the framework into your target repository, passing the target path as the only argument:
+From the harness repository, copy the harness into your target repository:
 
-```
+```bash
 ./install.sh /path/to/target-repo
 ```
 
-This copies the framework's `.claude/` directory into the target repository root. The copied `.claude/` carries everything Claude needs: `agents/`, `skills/`, `commands/`, `scripts/` (the Python CLIs the agents call), `config/` (the profile schema and examples), and `templates/` (the format templates placed into the artifact tree). A single copy brings the whole system across.
+This copies `.claude/` (agents, skills, scripts, hooks, config, templates) and the thin `CLAUDE.md` core into the target repository root. After this step the harness lives entirely inside the target repository; nothing is shared from the harness repository at runtime.
 
-After this step, the framework lives entirely inside the target repository. Nothing is shared from the framework repository at runtime, and nothing hides in a user home directory. You own the copy and can read every agent, skill, command, and script inside your own project.
+## Step 2: Restart the session
 
-## Step 2: Discover
+Open Claude Code in the target repository, or restart the session if one was already open. Claude Code discovers agents and skills from `.claude/` at session start, so a restart is required before the skills below are available.
 
-Open Claude Code in the target repository. If a session was already open in that repository, restart it.
+## Step 3: Run setup
 
-Claude Code discovers agents, skills, and commands from the target's `.claude/` at session start. A restart is required for the newly copied agents and skills to register; without it, the commands in the following steps will not be available.
-
-## Step 3: Setup
-
-Run the setup skill:
-
-```
+```txt
 /setup
 ```
 
-The setup skill runs once, immediately after the framework has been copied in, and leaves the repository ready for phase 0. It does two things:
+Setup runs once and does three things:
 
-- Creates the complete, documented artifact tree under the configured `artifact_root` via the scaffolding CLI. Every directory is present, each with a README and the format template for its artifacts, so you see the full structure up front.
-- Writes `sdlc.config.yaml` at the repository root, the single source of every project-specific fact. Greenfield projects are set up by interview, where the skill asks you for the facts the profile needs. Brownfield projects are set up by a scan of the existing codebase via the `profile-discoverer` agent, which drafts the profile from evidence (language, package manager, test runner, CI files, deploy configuration, directory conventions) for you to confirm.
+- Writes `sdlc.config.yaml`. On a greenfield project, setup interviews you for the facts the file needs. On an existing project, the main agent surveys the repository itself (the dbt project file, the DAG configuration directory, the test layout, the base branch), drafts the file from what the survey finds, and interviews you only for what the survey cannot determine; you confirm the draft before the file is written.
+- Scaffolds the project spine via `uv run .claude/scripts/scaffold.py init`: the `ai_docs/` tree with `reference/`, `initiatives/`, and the spine singletons.
+- Generates the agent registry via `uv run .claude/scripts/generate_agent_registry.py`, the catalogue the orchestrator discovers agent roles from.
 
-The skill is the seam: the agent gathers and confirms the configuration and verifies the end state, while the CLI guarantees the scaffolding is exact and repeatable. Setup finishes by validating the result, so you start the pipeline from a known-good state.
+## Step 4: State an intent
 
-## Step 4: Drive the pipeline
+The default way to drive the harness is to say what you need in plain language:
 
-The pipeline has two halves. The front half (phases 0 to 3) is interactive: the skills converse with you to elicit the charter, requirements, architecture, and plan. The back half (phase 4) is headless: an orchestration skill drives subagents that run in fresh context, report evidence, and never converse.
-
-Drive the phases in order:
-
-- `/initialise-project` writes `charter.md`: the vision, objectives, success metrics, constraints, stakeholders, and risks.
-- `/define-requirements` reads the charter and writes `prd.md`: requirement identifiers with MoSCoW priority, user personas, and acceptance criteria in a Given/When/Then grammar.
-- `/design-architecture` reads the requirements and writes `architecture.md`, diagrams, and architectural decision records under `reference/adr/`.
-- `/plan-implementation` reads the architecture and requirements and writes `implementation-plan.md`, the spec documents under `specs/`, and the task registry `specs/index.md`. This phase is the join: it emits exactly what the implementation loop consumes.
-
-Then, for each task in the registry, run the per-task loop:
-
-```
-/implement-task <task-id>
+```txt
+I need a dbt model that aggregates daily order totals per customer for the exports feed.
 ```
 
-For example, `/implement-task TASK-001`. The loop runs, in order: explore, prepare, implement, review panel, consolidate, walkthrough, and reconcile. The reconcile stage updates the spec document in place so it reflects what was actually built. Run `implement-task` once per task, working through the registry.
+The main agent, as the concierge, classifies the intent on target and magnitude, asking only when open readings would compose materially different runs. As the orchestrator, it then selects the recipe for that pair, prunes it, states the plan with a rationale per stage, and runs it, pausing at the gates for your approval. Include the phrase `elicit first` in the intent message when you want the concierge to ask about every point it would otherwise settle by inference.
 
-## Where artifacts land
+## A worked first run
 
-All artifacts live under one tree, the configured `artifact_root`. The default is `ai_docs`.
+Intent: the dbt request above, classified as `dbt-model` at `new-feature` magnitude. The orchestrator composes:
 
-```
+- Included: requirements update, implementation plan, then per task explore, prepare, generate, classify risk, review with the risk-scoped subset, consolidate, walk through, reconcile, and the run record throughout.
+- Pruned by magnitude: the project charter and the architecture stage, because a new feature within the existing design records no new architectural decision.
+- Skipped by idempotency: the warehouse-schema grounding, when `ai_docs/reference/schema-snapshot.md` already exists, validates, and covers the sources the spec names.
+
+What lands where, for initiative `INIT-001-daily-order-totals` and task `TASK-001`:
+
+```txt
 ai_docs/
-  charter.md                  Phase 0 output
-  prd.md                      Phase 1 output
-  architecture.md             Phase 2 output
-  implementation-plan.md      Phase 3 output
-  diagrams/                   Phase 2 diagrams
-  specs/
-    index.md                  Task registry: task to spec map and status board
-    NN-<area>.md              Per-area spec documents, contain tasks
-  reference/                  Living project-state documents
-    CONTEXT.md                Domain glossary, ubiquitous language
-    testing-conventions.md    Testing patterns and cadence
-    adr/                      Architectural decision records
-    <domain>.md               One per concern, created as needed
-  task-briefs/
-    <task-id>.md              Per-task brief
-  explorations/
-    <task-id>.md              Per-task exploration
-  reviews/
-    <task-id>/
-      <dimension>.md          One per reviewer in the roster
-      consolidated.md         The authoritative consolidated verdict
-  walkthroughs/
-    <task-id>.md              Per-task walkthrough
-  reconciliations/
-    <task-id>.md              Per-task reconciliation
-  runbook.md                  How to run the phases
+  prd.md                                          updated requirement
+  reference/schema-snapshot.md                    grounding (reused or refreshed)
+  initiatives/
+    index.md                                      status sentence + focus note
+    INIT-001-daily-order-totals/
+      implementation-plan.md
+      specs/index.md                              task registry
+      specs/01-daily-order-totals.md              per-task spec
+      explorations/TASK-001.md
+      task-briefs/TASK-001.md
+      reviews/TASK-001/                           risk classification, one review per dimension, consolidated.md
+      walkthroughs/TASK-001.md
+      reconciliations/TASK-001.md
+      run-record/
 ```
 
-## How to track progress
+The generated model and its schema file land in the application repository at the dbt location `sdlc.config.yaml` records, never inside `ai_docs/`.
 
-The pipeline is completely self-contained. There is no synchronisation to any external tracker.
+## Driving by hand
 
-- `specs/index.md` is the task registry and status board. It maps each task id to its spec document and records the status of every task.
-- The per-task artifacts under the artifact tree are the rest of the system of record.
+Pattern B gives you control of every step. Invoke a skill directly and inspect its artefact before deciding what to run next:
 
-To check progress, read `specs/index.md`. To trace what happened on a given task, read its exploration, brief, reviews, walkthrough, and reconciliation.
+- `/project-charter`, `/requirements-navigator`, `/arch-blueprint`, `/implementation-planner`: the four gated consultations.
+- `/adhoc-code-implement-loop`: the per-task implementation loop for ad-hoc code.
+- `/prime`: rebuild context from the artefact bus at any checkpoint.
 
-## The review panel
+Subagent roles are invoked by asking the main agent in plain language, for example `Run the feature-explorer for TASK-003 at thorough depth` or `Run the review panel on branch feature/exports`. Every invocation reads its inputs from the artefact bus, so rehydration comes from the artefacts, not from the conversation.
 
-Code review is a standard stage of `implement-task`, not an optional side call. The review panel runs automatically inside the per-task loop: a roster of reviewers, each spawned with one dimension and run in parallel, followed by a consolidator that writes the authoritative verdict.
+## Tracking progress
 
-You can also run the panel standalone against a task:
-
-```
-/review <task-id>
-```
-
-The default roster is the nine dimensions in the profile: spec-conformance, correctness, state-and-concurrency, security-and-trust-boundary, failure-and-robustness, observability, test-adequacy, interface-and-data-integrity, and conventions. A profile flag picks light mode (a subset of reviewers) or thorough mode (the full roster).
+- `ai_docs/initiatives/index.md` lists every initiative with a status sentence and carries the focus note.
+- Each initiative's `run-record/` says which stages ran, which were pruned or reused, and why.
+- Each initiative's `specs/index.md` is its task registry.
 
 ## Troubleshooting
 
-If anything looks wrong, validate the configuration and the artifact tree at any time:
+Validate the configuration and the spine at any time:
 
-```
+```bash
 uv run .claude/scripts/scaffold.py validate --root .
 ```
 
-This validates `sdlc.config.yaml` against the profile model, checks the artifact tree is complete, and prints a JSON report. If `valid` is false, read the `errors` and `missing_paths`. A malformed or incomplete config is fixed by editing `sdlc.config.yaml`; a missing tree path is restored by re-running the init command from the setup skill. Validate again until it reports valid.
+The command validates `sdlc.config.yaml` against the profile model (including the rule that mandatory agent roles cannot be disabled), checks the spine is complete, and prints a JSON report. Regenerate the agent registry after adding or editing any agent or skill file:
+
+```bash
+uv run .claude/scripts/generate_agent_registry.py
+```

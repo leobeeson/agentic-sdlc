@@ -1,0 +1,62 @@
+# Recipe family: ad-hoc-code (generation target)
+#
+# This family repeats the five dbt-model sequences with two substitutions: there
+# is no grounding snapshot at all, because ad-hoc code grounds in the exploration
+# report, the task brief, and the project context, and the generation stage is
+# the ad-hoc code implement loop, a skill the main agent performs in the
+# conversation (the developer drives the implementation step by step). Every rule
+# stated at the top of recipes/dbt-model.yaml applies unchanged here.
+
+target: ad-hoc-code
+grounding: none   # ad-hoc code grounds in the exploration report, the task brief, and ai_docs/reference/
+generation:
+  stage: generate
+  role: adhoc-code-implement-loop
+
+substituted_stages:
+  - stage: generate
+    role: adhoc-code-implement-loop
+    primitive: skill
+    per_task: true
+    included_when: "always: this stage is the intent"
+    default: every magnitude
+    writes: the implemented code and tests, in the application repository, with the task marked complete in the task registry
+    gate: the developer drives the loop step by step; ambiguity pauses inside the conversation
+
+recipes:
+  bug-fix:
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  feature-update:
+    - requirements
+    - prepare
+    - generate
+    - classify-risk
+    - review
+    - consolidate
+    - reconcile
+    - record
+  new-feature:
+    - requirements
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-capability:
+    - project-charter
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record
+  new-project:
+    - project-charter
+    - requirements
+    - architecture
+    - plan
+    - per_task: [explore, prepare, generate, classify-risk, review, consolidate, walkthrough, reconcile]
+    - record

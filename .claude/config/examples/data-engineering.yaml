@@ -1,0 +1,47 @@
+# The worked data-engineering profile: an illustrative data-engineering project on
+# ADP Foundry (Airflow via dag-factory), dbt, and Python. Every value is a
+# proposed default, tunable at implementation; the field set is the contract.
+
+project:
+  name: orders-analytics
+  kind: data-engineering
+  stack: [adp-foundry, dbt, python]
+  base_branch: main
+
+artefact_tree:
+  root: ai_docs/
+
+product_locations:
+  adp_foundry_yaml: airflow_dags/dags/orders_analytics/   # the directory the Airflow deployment scans
+  dbt_project: dbtcloud_project/                          # the dbt project root; models under models/
+  code_root: src/
+
+validation:
+  commands:
+    - "dbt build --select <selector>"        # the generator substitutes the task's selector
+    - "dbt parse"
+    - "python -c 'import yaml,sys,glob; [yaml.safe_load(open(f)) for f in glob.glob(\"airflow_dags/dags/**/*.yml\", recursive=True)]'"
+
+review:
+  severity_model: three-tier                 # the gate blocks on blockers only
+  roster:
+    - spec-conformance
+    - correctness
+    - state-and-concurrency
+    - security-and-trust-boundary
+    - failure-and-robustness
+    - observability
+    - test-adequacy
+    - interface-and-data-integrity
+    - conventions
+    - guidelines                             # the Data Engineering guidelines reviewer
+
+failure_patterns: .claude/config/failure-patterns.yaml
+schema_profile: data-engineering
+
+agents:
+  documentation-generator: enabled
+  code-walkthrough: enabled
+  feature-explorer:
+    default: enabled
+    adp_foundry_yaml: enabled                # per-target overrides are permitted here

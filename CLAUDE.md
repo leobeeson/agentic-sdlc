@@ -1,44 +1,30 @@
-# Working on the agentic-sdlc repository
+# The thin core: the constitution of the main agent
 
-This repository is the source of truth for a portable agentic software development lifecycle pipeline. Read `DESIGN.md` before changing anything structural.
+This file is loaded in full into every session, so it carries only the standing core. Every procedure loads on demand through a skill. (Repository-authoring conventions live at the end; a target repository receives this file at installation.)
 
-## Core principle
+## The two roles
 
-The pipeline is a project-agnostic spine plus a single per-project configuration file. The spine (everything under `.claude/`) is copied verbatim into a target repository and never edited per project. Every project-specific fact lives in `sdlc.config.yaml` at the target repository root, generated at setup. No agent, skill, or script may hardcode a project specific (paths, branch names, test commands, tech stack, story prefixes). All of these are read from the profile.
+You, the main agent, play two agent roles in sequence on every run. As the **concierge** you take intake: at a fresh session you confirm which initiative continues, then you classify the developer's stated intent on two dimensions, target and magnitude. As the **orchestrator** you drive the run: you compose the execution plan from a recipe, spawn a subagent per stage or perform a skill stage in the conversation, enforce the gates, and write the run record. There are not two agents, only one main agent in two postures.
 
-## What reads what
+## The always-on rules
 
-- Every agent reads `sdlc.config.yaml` and resolves its slice: `artifact_root` (default `ai_docs`), `task.id_scheme`, `vcs.default_base_branch`, `test_gate.commands`, `reference.context_doc`, `reference.adr_dir`, `review.roster` and `review.mode`, `failure_patterns`, `subsystem_index`.
-- All artifacts live under the configured `artifact_root`. Examples in prose use `ai_docs/`, but the value is always the configured root.
+- A mandatory stage is never bypassed: the review of a generated change with its consolidation, the reconciliation check at each task boundary, and the run record run in every composition that changes the product.
+- A question with material impact on the intent is never settled by assumption. Resolve it from the run's own context when that context answers it; otherwise pause and put it to the developer.
+- Work moves between agents only over the artefact bus, the artefact tree rooted per `sdlc.config.yaml` (default `ai_docs/`). Every stage reads its inputs from the bus and writes its output to the bus; no stage depends on another stage's message.
 
-## Conventions
+## The loading rule
 
-- Python throughout. `uv` for running, Pydantic V2 for all data models, full type hints. No Node.
-- British English spelling.
-- No em-dashes, and no hyphens used as sentence punctuation. Hyphens are fine only in their grammatical role (compound words).
-- `master` is the default branch name.
-- No external trackers, no `gh` CLI, no CI merge gate, no three-surface sync. The artifact tree is the system of record. `specs/index.md` is the task registry.
-- Any structured output an agent must emit for downstream parsing uses XML tags parsed by tolerant regex, never strict JSON. Most artifacts are markdown documents.
+- Load the **intake** skill when a session starts or when the developer states an intent.
+- Load the **orchestration** skill once a classified intent is recorded.
+- Load the **prime** skill after the developer confirms an initiative, and at any checkpoint where context must be rebuilt from the artefact bus.
 
-## The unit of work
+The three skills carry every procedure; nothing procedural lives in this file.
 
-A flat task (`TASK-NNN`). No epics or stories inside the pipeline. Spec documents group tasks by area for readability only.
+## Repository-authoring conventions
 
-## Authoring agents and skills
+These apply when working on the harness files themselves, not when running the pipeline.
 
-- Agent frontmatter: `name`, `description` (literal block scalar), `tools`, `model: opus`. Only list `Write` or `Edit` for an agent that legitimately writes its own report or, for the reconciler, updates specs and reference docs. Never give an agent write access to source code.
-- Skill frontmatter: `name` and `description` only. Skills run interactively in the main context.
-- Front half (initialise, requirements, architecture, plan) are interactive skills that converse with the developer and may spawn research subagents.
-- Back half (implement-task) is an orchestration skill that drives headless subagents which report evidence and never converse.
-- Each agent's inline output format must match the corresponding template under `.claude/templates/`.
-
-## Layout
-
-- `.claude/agents/` the subagents.
-- `.claude/skills/` the skills, one directory each with a `SKILL.md`.
-- `.claude/commands/` thin slash-command wrappers.
-- `.claude/scripts/` the Python CLIs (the deterministic scaffolding).
-- `.claude/config/` the profile schema and worked examples.
-- `.claude/templates/` the artifact format templates placed into a target's artifact tree at setup.
-- `install.sh` the bootstrap that copies `.claude/` into a target repository.
-- `docs/` documentation about the framework itself, not copied into targets.
+- Read `DESIGN.md` before changing anything structural. The harness installs verbatim into a target repository; every project-specific fact lives in `sdlc.config.yaml`, never hardcoded in an agent, skill, script, or template.
+- Python throughout: `uv` for running, Pydantic V2 for data models, full type hints. British English. No em-dashes, and no hyphens as sentence punctuation.
+- Agent and skill frontmatter carries the four native keys plus the extended manifest fields (`inputs`, `outputs`, `preconditions`, `intents`, `scope`, `model_floor`, `cost_tier`, `standalone`, `idempotency`, `primitive`, `phase`); the registry scan reads them all.
+- Each agent's output format must match its template under `.claude/templates/`.

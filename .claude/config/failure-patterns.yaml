@@ -1,0 +1,33 @@
+# The failure-pattern catalogue: the list of failure patterns already observed
+# on this project's stack. The risk-classifier reads this file to sharpen its
+# risk judgement when scoping a review. It is curated by hand: an engineer
+# appends a pattern when a failure teaches one, and the file is versioned and
+# reviewed like any code change. An automated feedback loop that proposes
+# entries from consolidated review findings is Phase 2.
+#
+# Each entry: what the pattern looks like, why it breaks, where it was observed,
+# and the reviewer dimension it points at.
+
+patterns:
+  # Data-engineering starter entries, illustrative; replace with the patterns
+  # this project has actually observed.
+  - id: FP-001
+    pattern: a dbt model joins on a column name guessed rather than read from the schema snapshot
+    breaks: the model compiles, runs, and passes basic tests while joining on the wrong key
+    observed: illustrative
+    points_at: [spec-conformance, interface-and-data-integrity]
+  - id: FP-002
+    pattern: an ADP Foundry DAG hardcodes an environment-specific bucket name instead of the environment variable template
+    breaks: the pipeline works in one environment and silently reads or writes the wrong bucket in another
+    observed: illustrative
+    points_at: [conventions, guidelines]
+  - id: FP-003
+    pattern: a DAG omits the audit success and failure callbacks
+    breaks: the run leaves no audit trail, and a failure is discovered late
+    observed: illustrative
+    points_at: [observability, guidelines]
+  - id: FP-004
+    pattern: a dbt schema file's model name does not match the SQL filename
+    breaks: dbt resolves the model but tests and documentation bind to nothing
+    observed: illustrative
+    points_at: [conventions]

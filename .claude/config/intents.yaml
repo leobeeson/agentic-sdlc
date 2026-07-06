@@ -1,0 +1,103 @@
+# The intent vocabulary: the two dimensions the concierge classifies on.
+#
+# This file is the closed control surface of intake. The concierge (the intake
+# role the main agent plays; see .claude/skills/intake/SKILL.md) classifies every
+# stated intent against the two vocabularies below. A target outside the
+# enumeration cannot run, because no recipe binds to it. Adding a kind of work is
+# a deliberate three-step act: add the target here, add its classifier mapping,
+# and author the recipe family that serves it (.claude/config/recipes/).
+#
+# The values here are proposed defaults, tunable at implementation. The field
+# set, not the values, is the contract.
+
+targets:
+  # The three generation targets. Magnitude applies; each owns a recipe family
+  # of five recipes, one per magnitude.
+  - id: adp-foundry-yaml
+    kind: generation
+    names: an ADP Foundry YAML pipeline configuration, created or changed
+    classify_when: the intent asks for an ADP Foundry pipeline configuration (an ingestion DAG, a transformation trigger DAG, an operator-driven pipeline)
+  - id: dbt-model
+    kind: generation
+    names: a dbt model and its schema file, created or changed
+    classify_when: the intent asks for a dbt model, a dbt source definition, or a change to one
+  - id: ad-hoc-code
+    kind: generation
+    names: "code outside the two frameworks: a script, a library change, tooling"
+    classify_when: the intent asks for code that is neither an ADP Foundry configuration nor a dbt model
+
+  # The five non-generation targets. No magnitude; each is a single short recipe.
+  - id: branch-review
+    kind: non-generation
+    names: a review of an existing branch or pull request, with nothing generated
+    classify_when: the intent asks for a review of a branch or pull request
+  - id: documentation
+    kind: non-generation
+    names: documentation of existing code or of a completed change
+    classify_when: the intent asks for documentation
+  - id: framework-onboarding
+    kind: non-generation
+    names: guidance on working with the agentic SDLC harness and the data-engineering frameworks
+    classify_when: the intent asks how to work with the harness or the frameworks
+  - id: ad-hoc-conversation
+    kind: non-generation
+    names: a question, an investigation, or a discussion that changes no product
+    classify_when: the intent is a question or an investigation, with no change to make
+  - id: access-provisioning
+    kind: non-generation
+    names: "obtaining AI-related access: accounts, model and gateway access, permissions"
+    classify_when: the intent asks for AI-related access or accounts
+
+# The magnitude ladder. A property of work that builds: it applies only to the
+# three generation targets. Each step is defined by what the intent does to the
+# product, never by how many lines it touches. An explicit statement by the
+# developer wins over inference.
+magnitudes:
+  - id: bug-fix
+    definition: the product misbehaves against its recorded or intended behaviour; the fix restores that behaviour and adds none
+  - id: feature-update
+    definition: "an existing behaviour changes: the product does something today and must do it differently"
+  - id: new-feature
+    definition: "behaviour is added within the existing architectural design: one task or a few, no new components"
+  - id: new-capability
+    definition: "the product gains something it does not do today, changing the architectural design: a new component, a new data flow, a new integration"
+  - id: new-project
+    definition: nothing exists yet; the pipeline starts from a charter
+
+# The model dial. One per-run knob with two positions, set once at classification
+# from the magnitude. It sets the model tier each producing agent role runs on
+# for that run. The orchestrator passes the resolved model when it spawns each
+# subagent. Tiers: mid = sonnet, strong = opus. No agent role runs on the weak
+# tier: agentic work compounds errors, and a weak model's mistakes cost more
+# downstream than the model saves.
+model_dial:
+  positions:
+    base: [bug-fix, feature-update, new-feature]
+    full: [new-capability, new-project]
+  roles:
+    # The specification roles and the consolidation role never drop below strong:
+    # a wrong specification is the most expensive error the pipeline can make,
+    # and the verdict the gate acts on is re-validated at consolidation.
+    requirements-navigator:       { base: strong, full: strong }
+    arch-blueprint:               { base: strong, full: strong }
+    implementation-planner:       { base: strong, full: strong }
+    task-preparer:                { base: strong, full: strong }
+    review-consolidator:          { base: strong, full: strong }
+    # Producing roles: mid at base, strong when the dial is full. They can afford
+    # mid by default because the strong specification roles sit above them and
+    # the strong review-consolidator sits below them.
+    adp-foundry-yaml-generator:   { base: mid, full: strong }
+    dbt-model-generator:          { base: mid, full: strong }
+    adhoc-code-implement-loop:    { base: mid, full: strong }
+    feature-explorer:             { base: mid, full: strong }
+    reviewer-panel:               { base: mid, full: strong }
+    code-walkthrough:             { base: mid, full: strong }
+    risk-classifier:              { base: mid, full: strong }
+    reconciler:                   { base: mid, full: strong }
+    # Mid, no escalation.
+    project-charter:              { base: mid, full: mid }
+    context-agent:                { base: mid, full: mid }
+    schema-retrieval-warehouse:   { base: mid, full: mid }
+    foundry-operator-reference:   { base: mid, full: mid }
+    documentation-generator:      { base: mid, full: mid }
+    access-provisioning:          { base: mid, full: mid }

@@ -1,111 +1,92 @@
 ---
 name: setup
 description: |
-  Sets up the agentic SDLC pipeline in this repository. Run once, immediately after the
-  framework has been copied in, to scaffold the documented artifact tree and generate the
-  per-project profile sdlc.config.yaml. Greenfield projects are set up by interview;
-  brownfield projects are set up by scanning the existing codebase. This is the single
-  setup entry point and the prerequisite for every phase that follows.
+  Sets up the agentic SDLC harness in this repository. Run once, immediately after
+  install.sh has copied .claude/ in: generates sdlc.config.yaml (greenfield interview, or a
+  brownfield survey the main agent performs itself), scaffolds the two-tier artefact tree,
+  and generates the agent registry. The single setup entry point and the prerequisite for
+  every run that follows.
+scope: harness-core
+phase: phase-1
 ---
 
 # Setup
 
-This skill sets up the agentic SDLC pipeline inside the current repository. It runs once, right after `install.sh` has copied `.claude/` in, and it leaves the repository ready for phase 0.
+This skill installs the shared memory into the current repository and produces the one file that couples the harness to this project. It runs once, right after `install.sh` has copied `.claude/` in. Setup is harness, not a catalogue entry: it appears in no recipe and no registry, and every later run assumes setup has happened.
 
-You do two things, and only these two:
+Setup does three things, in order:
 
-1. Create the complete, documented artifact tree under the configured `artifact_root`.
-2. Produce `sdlc.config.yaml` at the repository root, the single source of every project-specific fact.
+1. Produce `sdlc.config.yaml` at the repository root: the single per-project profile, the whole of the per-project coupling.
+2. Scaffold the two-tier artefact tree under the configured artefact root.
+3. Generate the agent registry by scanning the agent manifests.
 
-You do not produce the charter. The charter is phase 0, authored by the `initialise-project` skill. The profile is how the project is built; the charter is what and why it is built, and it comes later.
+Setup does not produce the charter. The charter is the project-charter consultation's output; the profile is how the project is built, the charter is what and why.
 
-## The pattern: a CLI for the mechanics, you for the judgment
+## The pattern: a CLI for the mechanics, judgement in the conversation
 
-The deterministic scaffolding is done by a Python CLI, `.claude/scripts/scaffold.py`. It guarantees the tree is exact, complete, and repeatable. The judgment, which is the actual content of `sdlc.config.yaml`, is yours: you gather it by interview or by scan, you confirm it with the developer, and you verify the end state. You are the seam that guarantees correctness end to end; the CLI guarantees the scaffolding is exact every time.
+The deterministic scaffolding is done by `.claude/scripts/scaffold.py`, run with `uv` (the script declares its dependencies inline). The judgement, which is the content of `sdlc.config.yaml`, is gathered in the conversation: by interview on a greenfield project, by your own survey on a brownfield one, confirmed by the developer either way.
 
-Run `scaffold.py` with `uv`. The script declares its own dependencies inline, so `uv run` resolves them with no separate install step.
+## Step 1: Greenfield or brownfield
 
-## Process
+Scan quickly with Glob and Read: source files, a dependency manifest (`pyproject.toml`, `package.json`, a dbt project file), a DAG configuration directory, a test suite, CI configuration. Ignore `.claude/` itself. Meaningful source and configuration means brownfield; little more than the harness and a README means greenfield. State the assessment and let the developer confirm; the developer's answer is authoritative.
 
-Work through these steps in order.
+## Step 2: Gather the profile
 
-### Step 1: Scaffold the artifact tree
+The field set is `.claude/config/sdlc.config.schema.yaml`; worked examples sit in `.claude/config/examples/`. Gather every field, by the branch that applies.
 
-Run the init command from the repository root:
+### Greenfield: interview
 
-```
-uv run .claude/scripts/scaffold.py init --root .
-```
+Ask for the facts the profile needs, and nothing more:
 
-This is idempotent. It does the following:
+- **project**: name, kind (data-engineering, application, library, tooling), stack, base branch.
+- **artefact_tree.root**: default `ai_docs/`.
+- **product_locations**: per generation target the project uses. For a data-engineering project: the directory the Airflow deployment scans for DAG YAML, the dbt project root, and the code root. The product lands where the deployment frameworks read, never in the artefact tree.
+- **validation.commands**: the exact commands that prove a change, verbatim.
+- **review**: the severity model (`three-tier` default) and the roster. Default to the nine core dimensions, adding `guidelines` when the project carries a guidelines mirror.
+- **failure_patterns**: leave the default path; the catalogue accrues with use.
+- **schema_profile**: `data-engineering` or `core`.
+- **agents**: leave every role enabled unless the developer asks otherwise.
 
-- Creates every artifact directory under the configured `artifact_root` (default `ai_docs/`): `specs/`, `reference/`, `reference/adr/`, `diagrams/`, `task-briefs/`, `explorations/`, `reviews/`, `walkthroughs/`, `reconciliations/`.
-- Places the singleton documents from the format templates: `specs/index.md` (the task registry), `reference/CONTEXT.md`, `reference/testing-conventions.md`, `runbook.md`, and the phase output stubs `charter.md`, `prd.md`, `architecture.md`, `implementation-plan.md`.
-- Places a `README.md` in each artifact directory documenting that directory's purpose and the format of the artifacts it holds.
-- Writes a starter `sdlc.config.yaml` skeleton at the repository root, with `TODO` placeholders for the values you fill in later steps.
+### Brownfield: survey the repository yourself
 
-Existing files are skipped, not overwritten. If you genuinely need to regenerate a file, pass `--force`. To target a non-default artifact root, pass `--artifact-root <name>`; otherwise the script reads the value from an existing config or falls back to `ai_docs`.
+The survey is your own work inside this step; spawn nothing, persist no scan artefact, and let the survey's only output be the drafted `sdlc.config.yaml`. The repository is the only source of truth, in strict precedence: manifests, lockfiles, config files, CI workflows, and git metadata first; source read at a real file and line second; READMEs and prose last, as hints to chase to a concrete file. A wrong value asserted with false confidence is worse than an honest "could not determine".
 
-The command prints a JSON report with `created` and `skipped` lists. Read it and report to the developer what was created and what already existed.
+Survey checklist:
 
-### Step 2: Determine greenfield or brownfield
+- **Stack**: the dependency manifests and lockfiles name the language and package manager (`uv.lock` means uv, `pnpm-lock.yaml` means pnpm); version pins name the runtime. A dbt project file (`dbt_project.yml`) and a DAG configuration directory mark a data-engineering project.
+- **Product locations**: the dbt project root; the directory the DAG loader scans (look for the dag-factory loader or the deployment workflow's sync path); the source root.
+- **Validation commands**: the highest-value detection, because the testing loop runs these verbatim. Prefer the command CI actually runs (the workflow files), reconciled with manifest scripts and test configuration files.
+- **Base branch**: `git symbolic-ref refs/remotes/origin/HEAD`; fall back to inspecting the branch list, and record any ambiguity.
+- **Conventions**: the test layout and naming, the linter and type checker configs, the directory layout.
 
-Decide whether this is a greenfield project (an empty or near-empty repository) or a brownfield project (an existing codebase with source, tests, and configuration already present).
+Draft `sdlc.config.yaml` from the survey, interview the developer only for what the survey could not determine, and walk the developer through the draft field by field, flagging every low-confidence inference. The developer confirms before the file is written.
 
-- Run a quick scan with Glob and Read: look for source files, a build or dependency manifest (for example `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`), a test suite, CI configuration, and deployment configuration. Ignore the `.claude/` framework and the freshly scaffolded `artifact_root`; they are present in both cases.
-- If there is meaningful source code and project configuration, treat it as brownfield. If the repository holds little more than the framework and a readme, treat it as greenfield.
-- State your assessment to the developer and confirm it before proceeding. The developer's answer is authoritative.
+## Step 3: Write and validate the profile
 
-### Step 3: Gather the profile values
-
-Take the branch that matches the project kind.
-
-#### Greenfield: interview the developer
-
-Ask the developer for the facts the profile needs, and nothing more. Cover:
-
-- **Project**: name, a one or two sentence description, and the kind (`greenfield`).
-- **Tech stack**: the primary language, the package manager, and the runtime version. Capture any further facts that help reviewers, for example frameworks, linter, type checker, under `tech_stack`; the schema permits extra fields.
-- **Test gate**: the exact commands that run the test suite, and the test naming convention. The conventions document defaults to `reference/testing-conventions.md`.
-- **Version control**: the default base branch that reviews and diffs compare against (default `master`).
-- **Deploy surface**: whether the project has a deployment surface. If it does, set `deploy_config.detected` to true and record the deployment configuration file paths; if not, leave it as the default false with an empty list.
-- **Review**: the review mode (`thorough` runs the full roster, `light` runs a subset) and the roster. Default to `thorough` with the full nine-dimension roster: spec-conformance, correctness, state-and-concurrency, security-and-trust-boundary, failure-and-robustness, observability, test-adequacy, interface-and-data-integrity, conventions.
-
-Leave `task.id_scheme`, `task.spec_grouping`, `vcs.branch_scheme`, `reference` paths, `review.consolidator`, `review.severity_model`, `failure_patterns`, and `subsystem_index` at their skeleton defaults unless the developer asks to change them. `failure_patterns` start empty and accrue as the pipeline runs.
-
-#### Brownfield: scan with the profile-discoverer agent
-
-Spawn the `profile-discoverer` agent to scan the existing repository and draft `sdlc.config.yaml` from evidence: the language and package manager, the test runner and its invocation, CI files, deploy configuration, directory conventions, and recurring idioms. The agent returns a drafted profile grounded in what it actually found in the code.
-
-Present that draft to the developer. Walk through each field, flag anything the agent inferred with low confidence, and ask the developer to confirm or correct. The developer's confirmation is authoritative; the scan is a strong starting point, not the final word.
-
-### Step 4: Write the confirmed profile
-
-Write the confirmed values into `sdlc.config.yaml` at the repository root, replacing every `TODO` placeholder left by the skeleton. Use `.claude/config/sdlc.config.schema.yaml` for the documented shape of each field and `.claude/config/examples/` for worked examples. Set `project.kind` to match the branch you took. Leave no `TODO` behind.
-
-### Step 5: Validate
-
-Run the validate command:
+Write the confirmed values to `sdlc.config.yaml` at the repository root, leaving no placeholder behind. Then validate:
 
 ```
 uv run .claude/scripts/scaffold.py validate --root .
 ```
 
-It validates `sdlc.config.yaml` against the profile model and checks the artifact tree is complete, then prints a JSON report. If `valid` is true, continue. If not, read the `errors` and `missing_paths`, fix the cause (a malformed or incomplete config, or a missing tree path that a re-run of `init` will restore), and validate again. Repeat until it reports valid.
+Fix and re-run until the report is valid.
 
-### Step 6: Report the final state
+## Step 4: Scaffold the two-tier artefact tree
 
-Tell the developer:
+```
+uv run .claude/scripts/scaffold.py init --root .
+```
 
-- The artifact tree that was created, under the configured `artifact_root`.
-- The profile that was written, with the key values (project, tech stack, test gate, base branch, review mode and roster).
-- That validation passed.
-- The next step: run the `initialise-project` skill to begin phase 0 and author the charter.
+Idempotent; existing files are skipped, never overwritten. The command creates the artefact tree's two tiers under the configured root: the project spine (the charter, PRD, and architecture stubs, `reference/` with `CONTEXT.md`, `testing-conventions.md`, and `adrs/`, and `diagrams/`) and the initiatives tier (`initiatives/index.md`, the initiative registry with its focus note; one workspace per initiative is minted later, per intent, by the orchestrator via `scaffold.py new-initiative`). Read the JSON report and tell the developer what was created and what already existed.
 
-## What the developer now has
+## Step 5: Generate the agent registry
 
-After setup, everything lives visibly inside the developer's own repository, with full up-front visibility and nothing hidden in a user home directory:
+```
+uv run .claude/scripts/generate_agent_registry.py --root .
+```
 
-- The whole `.claude/` framework: the agents, skills, commands, scripts, config schema, and templates.
-- The complete, documented artifact tree under the configured `artifact_root`, every directory present with a README and the format template for its artifacts.
-- `sdlc.config.yaml` at the repository root, the single source of project coupling that every agent reads thereafter.
+The script scans the manifest frontmatter of every agent definition under `.claude/agents/` and every skill under `.claude/skills/`, and writes `ai_docs/agent-registry.md`: the catalogue of every agent role, what each consumes and produces, and whether each is core or profile scoped. The registry is never hand-edited; re-run the script whenever an agent role's file changes.
+
+## Step 6: Report the final state
+
+Tell the developer: the profile written and its key values; the tree created; the registry generated; and the next step, stating an intent in plain language (the intake skill takes it from there), or `/project-charter` to begin a new project explicitly.

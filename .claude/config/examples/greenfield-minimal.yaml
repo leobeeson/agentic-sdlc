@@ -1,59 +1,35 @@
+# A minimal greenfield profile: a new Python project started from an empty
+# repository, using the core schema profile (no data-engineering branch).
+
 project:
   name: example-greenfield
-  description: A new service started from an empty repository.
-  kind: greenfield
+  kind: application
+  stack: [python]
+  base_branch: main
 
-artifact_root: ai_docs
+artefact_tree:
+  root: ai_docs/
 
-task:
-  id_scheme: "TASK-{NNN}"
-  spec_grouping: by-concern
+product_locations:
+  code_root: src/
 
-vcs:
-  default_base_branch: master
-  branch_scheme: "feature/{task-id-lower}-{slug}"
-
-tech_stack:
-  language: python
-  package_manager: uv
-  runtime_version: ">=3.12"
-
-test_gate:
+validation:
   commands:
     - "uv run pytest -q"
-  conventions_doc: reference/testing-conventions.md
-  test_naming: "test_{behaviour}"
-
-deploy_config:
-  detected: false
-  config_files: []
-
-reference:
-  context_doc: reference/CONTEXT.md
-  adr_dir: reference/adr
 
 review:
-  mode: thorough
+  severity_model: three-tier
   roster:
     - spec-conformance
     - correctness
-    - state-and-concurrency
-    - security-and-trust-boundary
     - failure-and-robustness
-    - observability
     - test-adequacy
-    - interface-and-data-integrity
     - conventions
-  consolidator: review-consolidator
-  severity_model: "irreversibility x silence x blast-radius"
 
-failure_patterns:
-  state_consistency: []
-  trust_boundary: []
-  observability: []
-  robustness: []
-  live_path_wiring: []
+failure_patterns: .claude/config/failure-patterns.yaml
+schema_profile: core
 
-subsystem_index:
-  enabled: false
-  path: null
+agents:
+  documentation-generator: enabled
+  code-walkthrough: enabled
+  feature-explorer: enabled

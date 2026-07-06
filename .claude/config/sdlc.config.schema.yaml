@@ -1,71 +1,69 @@
-# sdlc.config.yaml schema (annotated reference)
+# The schema of sdlc.config.yaml: the single per-project profile.
 #
-# This file documents the shape of the per-project profile. It is the single
-# source of every project-specific fact the pipeline reads. The authoritative
-# validator is the Pydantic V2 model in ../scripts/scaffold.py; this file is the
-# human-readable reference and is kept consistent with that model.
+# sdlc.config.yaml holds the facts about one project that change rarely and that
+# every agent needs. It is the configuration of the project, not the plan of a
+# run: the orchestrator's runtime choices are recorded in the run record, so
+# configuration and execution stay distinct. The file is generated once at setup
+# (a greenfield interview, or a brownfield survey the main agent performs
+# itself) and read in slices by every agent thereafter. This file is the whole
+# of the per-project coupling: the harness installs verbatim, and only
+# sdlc.config.yaml changes from project to project.
 #
-# A concrete sdlc.config.yaml lives at the target repository root and is
-# generated at setup (greenfield interview or brownfield scan).
+# The authoritative validator is the Pydantic V2 model in ../scripts/scaffold.py;
+# this file is the human-readable reference and is kept consistent with that
+# model. The field set, not the values, is the contract. Every value shown is a
+# proposed default, tunable at implementation.
 
 project:
-  name: string                      # the project name
-  description: string               # one or two sentences
-  kind: greenfield | brownfield     # greenfield: interview. brownfield: scan an existing repo.
+  name: string                    # the project's name
+  kind: enum                      # data-engineering | application | library | tooling
+  stack: list[string]             # e.g. [adp-foundry, dbt, python]
+  base_branch: string             # the branch reviews and diffs compare against, e.g. main
 
-artifact_root: ai_docs              # root directory for every pipeline artifact
+artefact_tree:
+  root: string                    # default ai_docs/
 
-task:
-  id_scheme: "TASK-{NNN}"           # flat, global sequence. No epics or stories.
-  spec_grouping: by-concern         # spec documents group tasks by area, for readability only
+product_locations:                # where the generated product lands, per generation target;
+                                  # generators write here, never into the artefact tree
+  adp_foundry_yaml: string        # the directory the Airflow deployment scans, e.g. airflow_dags/dags/<project>/
+  dbt_project: string             # the dbt project root; models under models/
+  code_root: string               # ad-hoc code, e.g. src/
 
-vcs:
-  default_base_branch: master       # the branch reviews and diffs compare against
-  branch_scheme: "feature/{task-id-lower}-{slug}"
-
-tech_stack:
-  language: string                  # for example python, typescript
-  package_manager: string           # for example uv, pnpm
-  # further fields are permitted and are detected at setup or supplied by interview,
-  # for example runtime_version, frameworks, linters, type_checker
-
-test_gate:
-  commands:                         # the exact commands that run the test suite
-    - "uv run pytest -q"
-  conventions_doc: reference/testing-conventions.md
-  test_naming: "test_{behaviour}"
-
-deploy_config:                      # optional, populated only for projects with a deployment surface
-  detected: false
-  config_files: []                  # paths to deployment configuration the robustness reviewer reads
-  # further fields are permitted, for example infra_tool, scaling_knobs, feature_flags
-
-reference:
-  context_doc: reference/CONTEXT.md  # the domain glossary every agent reads
-  adr_dir: reference/adr             # architectural decision records
+validation:                       # the real commands the capped testing loop runs; the per-task
+                                  # spec's Validation Commands section draws from these
+  commands: list[string]          # e.g. ["dbt build --select <selector>", "uv run pytest -q"]
 
 review:
-  mode: thorough | light             # thorough runs the full roster, light runs a subset
-  roster:                            # the review panel dimensions, each spawned as one code-reviewer
-    - spec-conformance
-    - correctness
-    - state-and-concurrency
-    - security-and-trust-boundary
-    - failure-and-robustness
-    - observability
-    - test-adequacy
-    - interface-and-data-integrity
-    - conventions
-  consolidator: review-consolidator
-  severity_model: "irreversibility x silence x blast-radius"
+  severity_model: enum            # three-tier (blocker | should_fix | nice_to_have);
+                                  # the gate blocks on blockers only
+  roster: list[string]            # the reviewer dimensions available to this project, a subset of:
+                                  # spec-conformance, correctness, state-and-concurrency,
+                                  # security-and-trust-boundary, failure-and-robustness,
+                                  # observability, test-adequacy, interface-and-data-integrity,
+                                  # conventions, guidelines
 
-failure_patterns:                    # greppable, evidenced idioms per failure class, used by reviewers
-  state_consistency: []              # each entry: {pattern, breaks, cite, severity}
-  trust_boundary: []
-  observability: []
-  robustness: []
-  live_path_wiring: []
+failure_patterns: path            # the catalogue of failure patterns already observed on this
+                                  # project's stack, curated by hand, versioned and reviewed like
+                                  # code; the risk-classifier reads it to sharpen its judgement.
+                                  # Default: .claude/config/failure-patterns.yaml
 
-subsystem_index:                     # optional map from file globs to subsystems, off by default
-  enabled: false
-  path: null
+schema_profile: enum              # which artefact-schema profile applies: core | data-engineering
+
+agents:                           # the availability switch: per agent role, with optional
+                                  # per-target overrides. Four rules make disabling safe:
+                                  # - the orchestrator applies the switch at plan composition, as
+                                  #   the fourth pruning criterion beside magnitude, idempotency,
+                                  #   and risk, so a disabled role's stage is pruned before
+                                  #   anything executes
+                                  # - a stage the recipe marks mandatory (review with its
+                                  #   consolidation, reconciliation, the run record) is immune,
+                                  #   and configuration validation rejects an attempt to disable it
+                                  # - when a disabled role's output is a required input of a later
+                                  #   stage, the orchestrator asks the developer for the artefact
+                                  #   directly; it never silently degrades
+                                  # - the run record's rationale for the pruned stage gains the
+                                  #   value "disabled by configuration"
+  <agent-role-name>: enabled | disabled | map
+  # feature-explorer:
+  #   default: enabled
+  #   adp_foundry_yaml: disabled  # example per-target override
